@@ -269,16 +269,10 @@ SECURITY_STATUS WINAPI NCryptEncrypt(NCRYPT_KEY_HANDLE key, BYTE *input, DWORD i
         return NTE_BAD_FLAGS;
     }
 
-    if (flags & NCRYPT_NO_PADDING_FLAG || flags & NCRYPT_PAD_OAEP_FLAG)
-    {
-        FIXME("No padding and oaep padding not supported\n");
-        return NTE_NOT_SUPPORTED;
-    }
-
     if (key_object->type != KEY) return NTE_INVALID_HANDLE;
 
     return map_ntstatus(BCryptEncrypt(key_object->key.bcrypt_key, input, insize, padding,
-                                      NULL, 0, output, outsize, result, flags));
+                                      NULL, 0, output, outsize, result, flags & ~NCRYPT_SILENT_FLAG));
 }
 
 SECURITY_STATUS WINAPI NCryptEnumAlgorithms(NCRYPT_PROV_HANDLE provider, DWORD alg_ops,

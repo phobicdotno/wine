@@ -736,6 +736,7 @@ static UCHAR data_to_encrypt[12] = "Hello world";
 
 static void test_NCryptEncrypt(void)
 {
+    BCRYPT_OAEP_PADDING_INFO oaep;
     NCRYPT_PROV_HANDLE prov;
     NCRYPT_KEY_HANDLE key;
     SECURITY_STATUS ret;
@@ -765,8 +766,6 @@ static void test_NCryptEncrypt(void)
     ok(ret == NTE_BAD_FLAGS, "got %lx\n", ret);
 
     /* Test no padding with RSA */
-    todo_wine
-    {
     ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), NULL, NULL, 0, &output_size,
                         NCRYPT_NO_PADDING_FLAG);
     ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
@@ -777,7 +776,32 @@ static void test_NCryptEncrypt(void)
                         &output_size, NCRYPT_NO_PADDING_FLAG);
     ok(ret == NTE_INVALID_PARAMETER, "got %lx\n", ret);
     free(output_a);
-    }
+
+    /* Test OAEP padding with RSA */
+    oaep.pszAlgId = BCRYPT_SHA256_ALGORITHM;
+    oaep.pbLabel = NULL;
+    oaep.cbLabel = 0;
+    output_size = 0;
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), &oaep, NULL, 0, &output_size,
+                        NCRYPT_PAD_OAEP_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(output_size == 128, "got %ld\n", output_size);
+
+    output_a = malloc(output_size);
+    output_b = malloc(output_size);
+
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), &oaep, output_a, output_size,
+                        &output_size, NCRYPT_PAD_OAEP_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(output_size == 128, "got %ld\n", output_size);
+
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), &oaep, output_b, output_size,
+                        &output_size, NCRYPT_PAD_OAEP_FLAG | NCRYPT_SILENT_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(memcmp(output_a, output_b, 128), "expected to have different outputs.\n");
+
+    free(output_a);
+    free(output_b);
 
     /* Test output RSA with PKCS1. PKCS1 should append a random padding to the data, so the output should be different
      * with each call. */
@@ -806,6 +830,20 @@ static void test_NCryptEncrypt(void)
     free(output_a);
     free(output_b);
 
+    /* Test OAEP padding with an imported public key */
+    ret = NCryptImportKey(prov, 0, BCRYPT_RSAPUBLIC_BLOB, NULL, &key, rsa_key_blob, sizeof(rsa_key_blob), 0);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+
+    oaep.pszAlgId = BCRYPT_SHA1_ALGORITHM;
+    output_a = malloc(128);
+    output_size = 0;
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), &oaep, output_a, 128,
+                        &output_size, NCRYPT_PAD_OAEP_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(output_size == 128, "got %ld\n", output_size);
+    free(output_a);
+
+    NCryptFreeObject(key);
     NCryptFreeObject(prov);
 }
 
