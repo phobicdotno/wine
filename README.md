@@ -1,3 +1,35 @@
+## ABOUT THIS FORK
+
+This is a fork of [Wine](https://gitlab.winehq.org/wine/wine) that makes
+CODESYS V3.5 able to go online to PLCs under Wine.
+
+Stock Wine's `ncrypt` refuses RSA encryption with OAEP padding
+(`NCryptEncrypt` with `NCRYPT_PAD_OAEP_FLAG`), and `NCryptDecrypt` is a stub.
+CODESYS uses OAEP to encrypt the login session key, so every login to a PLC
+fails with "Unknown error -2146893783" (0x80090029, NTE_NOT_SUPPORTED).
+This fork passes the padding flags and padding info through to `bcrypt`,
+which already supports no padding, PKCS1 and OAEP.
+
+- The changes are on branch
+  [`ncrypt-rsa-padding`](https://github.com/phobicdotno/wine/tree/ncrypt-rsa-padding)
+  ([PR #1](https://github.com/phobicdotno/wine/pull/1)): two commits in
+  `dlls/ncrypt`, with tests. `master` otherwise follows upstream Wine.
+- Tested with CODESYS V3.5 SP19 Patch 2 on Ubuntu 24.04 against a WAGO
+  PFC200 (750-8216): login, download, start and boot application work.
+  The ncrypt conformance tests pass, 32-bit and 64-bit.
+- Not submitted upstream to WineHQ.
+
+Build (Ubuntu 24.04, with `deb-src` enabled):
+
+```sh
+sudo apt build-dep wine && sudo apt install gcc-mingw-w64
+git clone -b ncrypt-rsa-padding https://github.com/phobicdotno/wine.git wine-src
+mkdir wine-build && cd wine-build
+../wine-src/configure --enable-archs=i386,x86_64 && make -j$(nproc)
+./wine ...   # run from the build tree, or make install
+```
+
+
 ## INTRODUCTION
 
 Wine is a program which allows running Microsoft Windows programs
