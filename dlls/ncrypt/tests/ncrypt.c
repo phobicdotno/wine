@@ -847,6 +847,84 @@ static void test_NCryptEncrypt(void)
     NCryptFreeObject(prov);
 }
 
+static void test_NCryptDecrypt(void)
+{
+    BCRYPT_OAEP_PADDING_INFO oaep;
+    NCRYPT_PROV_HANDLE prov;
+    NCRYPT_KEY_HANDLE key;
+    SECURITY_STATUS ret;
+    BYTE encrypted[128], decrypted[128], raw[128];
+    DWORD size;
+
+    NCryptOpenStorageProvider(&prov, NULL, 0);
+    NCryptCreatePersistedKey(prov, &key, BCRYPT_RSA_ALGORITHM, NULL, 0, 0);
+    NCryptFinalizeKey(key, 0);
+    memset(encrypted, 0, sizeof(encrypted));
+
+    /* Test decrypt with invalid key handle */
+    ret = NCryptDecrypt(prov, encrypted, sizeof(encrypted), NULL, decrypted, sizeof(decrypted),
+                        &size, NCRYPT_PAD_PKCS1_FLAG);
+    ok(ret == NTE_INVALID_HANDLE, "got %lx\n", ret);
+
+    /* Test decrypt with invalid flags */
+    ret = NCryptDecrypt(key, encrypted, sizeof(encrypted), NULL, decrypted, sizeof(decrypted),
+                        &size, 51342);
+    ok(ret == NTE_BAD_FLAGS, "got %lx\n", ret);
+
+    /* Test PKCS1 round trip */
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), NULL, encrypted, sizeof(encrypted),
+                        &size, NCRYPT_PAD_PKCS1_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == 128, "got %ld\n", size);
+
+    memset(decrypted, 0, sizeof(decrypted));
+    ret = NCryptDecrypt(key, encrypted, sizeof(encrypted), NULL, decrypted, sizeof(decrypted),
+                        &size, NCRYPT_PAD_PKCS1_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == sizeof(data_to_encrypt), "got %ld\n", size);
+    ok(!memcmp(decrypted, data_to_encrypt, sizeof(data_to_encrypt)), "wrong data\n");
+
+    /* Test OAEP round trip with a label */
+    oaep.pszAlgId = BCRYPT_SHA256_ALGORITHM;
+    oaep.pbLabel = (BYTE *)"label";
+    oaep.cbLabel = 5;
+    ret = NCryptEncrypt(key, data_to_encrypt, sizeof(data_to_encrypt), &oaep, encrypted, sizeof(encrypted),
+                        &size, NCRYPT_PAD_OAEP_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == 128, "got %ld\n", size);
+
+    memset(decrypted, 0, sizeof(decrypted));
+    ret = NCryptDecrypt(key, encrypted, sizeof(encrypted), &oaep, decrypted, sizeof(decrypted),
+                        &size, NCRYPT_PAD_OAEP_FLAG | NCRYPT_SILENT_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == sizeof(data_to_encrypt), "got %ld\n", size);
+    ok(!memcmp(decrypted, data_to_encrypt, sizeof(data_to_encrypt)), "wrong data\n");
+
+    /* A different label must not decrypt */
+    oaep.cbLabel = 4;
+    ret = NCryptDecrypt(key, encrypted, sizeof(encrypted), &oaep, decrypted, sizeof(decrypted),
+                        &size, NCRYPT_PAD_OAEP_FLAG);
+    ok(ret != ERROR_SUCCESS, "got %lx\n", ret);
+
+    /* Test no padding round trip */
+    memset(raw, 0, sizeof(raw));
+    memcpy(raw + sizeof(raw) - sizeof(data_to_encrypt), data_to_encrypt, sizeof(data_to_encrypt));
+    ret = NCryptEncrypt(key, raw, sizeof(raw), NULL, encrypted, sizeof(encrypted), &size,
+                        NCRYPT_NO_PADDING_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == 128, "got %ld\n", size);
+
+    memset(decrypted, 0xff, sizeof(decrypted));
+    ret = NCryptDecrypt(key, encrypted, sizeof(encrypted), NULL, decrypted, sizeof(decrypted), &size,
+                        NCRYPT_NO_PADDING_FLAG);
+    ok(ret == ERROR_SUCCESS, "got %lx\n", ret);
+    ok(size == 128, "got %ld\n", size);
+    ok(!memcmp(decrypted, raw, sizeof(raw)), "wrong data\n");
+
+    NCryptFreeObject(key);
+    NCryptFreeObject(prov);
+}
+
 static void test_NCryptExportKey(void)
 {
     NCRYPT_PROV_HANDLE prov;
@@ -889,5 +967,6 @@ START_TEST(ncrypt)
     test_verify_signature();
     test_NCryptIsAlgSupported();
     test_NCryptEncrypt();
+    test_NCryptDecrypt();
     test_NCryptExportKey();
 }
